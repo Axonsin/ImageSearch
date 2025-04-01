@@ -23,7 +23,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         
     def initUI(self):
         self.setWindowTitle('图像相似度搜索')
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 900, 700)
         
         # 创建中央部件
         central_widget = QtWidgets.QWidget()
@@ -35,6 +35,36 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 创建拖放区域
         self.drop_area = DropArea(self)
         self.drop_area.setMinimumHeight(200)
+        
+        # 创建图像信息显示区域
+        self.image_info_frame = QtWidgets.QFrame()
+        self.image_info_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.image_info_frame.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.image_info_frame.setVisible(False)
+        
+        info_layout = QtWidgets.QGridLayout(self.image_info_frame)
+        
+        # 添加图像信息标签
+        self.format_label = QtWidgets.QLabel("格式:")
+        self.type_label = QtWidgets.QLabel("类型:")
+        self.depth_label = QtWidgets.QLabel("位元深度:")
+        self.path_label = QtWidgets.QLabel("路径:")
+        
+        self.format_value = QtWidgets.QLabel()
+        self.type_value = QtWidgets.QLabel()
+        self.depth_value = QtWidgets.QLabel()
+        self.path_value = QtWidgets.QLabel()
+        self.path_value.setWordWrap(True)
+        
+        # 添加到布局
+        info_layout.addWidget(self.format_label, 0, 0)
+        info_layout.addWidget(self.format_value, 0, 1)
+        info_layout.addWidget(self.type_label, 1, 0)
+        info_layout.addWidget(self.type_value, 1, 1)
+        info_layout.addWidget(self.depth_label, 2, 0)
+        info_layout.addWidget(self.depth_value, 2, 1)
+        info_layout.addWidget(self.path_label, 3, 0, QtCore.Qt.AlignTop)
+        info_layout.addWidget(self.path_value, 3, 1)
         
         # 创建文件夹选择区域
         folder_layout = QtWidgets.QHBoxLayout()
@@ -65,6 +95,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 添加到主布局
         main_layout.addWidget(QtWidgets.QLabel("将源图像拖放到下方区域:"))
         main_layout.addWidget(self.drop_area)
+        main_layout.addWidget(self.image_info_frame)
         main_layout.addLayout(folder_layout)
         main_layout.addLayout(hash_layout)
         main_layout.addWidget(self.search_btn)
@@ -81,7 +112,60 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
     def set_source_image(self, file_path):
         self.source_image_path = file_path
         self.drop_area.set_image(file_path)
+        self.update_image_info(file_path)
         self.update_search_button_state()
+    
+    def update_image_info(self, file_path):
+        try:
+            # 获取文件信息
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            # 使用PIL获取详细信息
+            with Image.open(file_path) as img:
+                # 获取文件格式
+                format_info = img.format if img.format else "未知"
+                
+                # 获取位元深度
+                mode = img.mode
+                if mode == '1':  # 1-bit pixels, black and white
+                    bit_depth = "1-bit"
+                elif mode == 'L':  # 8-bit pixels, grayscale
+                    bit_depth = "8-bit 灰度"
+                elif mode == 'P':  # 8-bit pixels, mapped to any other mode using a color palette
+                    bit_depth = "8-bit 调色板"
+                elif mode == 'RGB':  # 3x8-bit pixels, true color
+                    bit_depth = "24-bit RGB"
+                elif mode == 'RGBA':  # 4x8-bit pixels, true color with transparency
+                    bit_depth = "32-bit RGBA"
+                elif mode == 'CMYK':  # 4x8-bit pixels, color separation
+                    bit_depth = "32-bit CMYK"
+                elif mode == 'YCbCr':  # 3x8-bit pixels, color video format
+                    bit_depth = "24-bit YCbCr"
+                elif mode == 'I':  # 32-bit signed integer pixels
+                    bit_depth = "32-bit 整数"
+                elif mode == 'F':  # 32-bit floating point pixels
+                    bit_depth = "32-bit 浮点数"
+                elif mode == 'LA':  # 8-bit pixels grayscale with alpha
+                    bit_depth = "16-bit 灰度+Alpha"
+                elif mode == 'RGBX':  # true color with padding
+                    bit_depth = "32-bit RGBX"
+                elif mode == 'HSV':  # 3x8-bit pixels, Hue, Saturation, Value color space
+                    bit_depth = "24-bit HSV"
+                else:
+                    bit_depth = f"{mode} 模式"
+            
+            # 设置信息到标签
+            self.format_value.setText(format_info)
+            self.type_value.setText(file_ext[1:].upper())
+            self.depth_value.setText(bit_depth)
+            self.path_value.setText(file_path)
+            
+            # 显示信息框
+            self.image_info_frame.setVisible(True)
+        
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "警告", f"获取图像信息时出错: {e}")
+            self.image_info_frame.setVisible(False)
     
     def update_search_button_state(self):
         self.search_btn.setEnabled(self.source_image_path is not None and 
