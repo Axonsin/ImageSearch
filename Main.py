@@ -48,11 +48,13 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.format_label = QtWidgets.QLabel("格式:")
         self.type_label = QtWidgets.QLabel("类型:")
         self.depth_label = QtWidgets.QLabel("位元深度:")
+        self.resolution_label = QtWidgets.QLabel("分辨率:")
         self.path_label = QtWidgets.QLabel("路径:")
         
         self.format_value = QtWidgets.QLabel()
         self.type_value = QtWidgets.QLabel()
         self.depth_value = QtWidgets.QLabel()
+        self.resolution_value = QtWidgets.QLabel()
         self.path_value = QtWidgets.QLabel()
         self.path_value.setWordWrap(True)
         
@@ -63,8 +65,10 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         info_layout.addWidget(self.type_value, 1, 1)
         info_layout.addWidget(self.depth_label, 2, 0)
         info_layout.addWidget(self.depth_value, 2, 1)
-        info_layout.addWidget(self.path_label, 3, 0, QtCore.Qt.AlignTop)
-        info_layout.addWidget(self.path_value, 3, 1)
+        info_layout.addWidget(self.resolution_label, 3, 0)
+        info_layout.addWidget(self.resolution_value, 3, 1)
+        info_layout.addWidget(self.path_label, 4, 0, QtCore.Qt.AlignTop)
+        info_layout.addWidget(self.path_value, 4, 1)
         
         # 创建文件夹选择区域
         folder_layout = QtWidgets.QHBoxLayout()
@@ -125,6 +129,10 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 # 获取文件格式
                 format_info = img.format if img.format else "未知"
                 
+                # 获取分辨率
+                width, height = img.size
+                resolution = f"{width} × {height} 像素"
+                
                 # 获取位元深度
                 mode = img.mode
                 if mode == '1':  # 1-bit pixels, black and white
@@ -158,6 +166,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             self.format_value.setText(format_info)
             self.type_value.setText(file_ext[1:].upper())
             self.depth_value.setText(bit_depth)
+            self.resolution_value.setText(resolution)
             self.path_value.setText(file_path)
             
             # 显示信息框
