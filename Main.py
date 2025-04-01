@@ -26,7 +26,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         
     def initUI(self):
         self.setWindowTitle('图像相似度搜索')
-        self.setGeometry(100, 100, 900, 700)
+        self.setGeometry(100, 100, 1000, 700)
         
         # 创建中央部件
         central_widget = QtWidgets.QWidget()
@@ -125,10 +125,19 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 创建结果数量标签
         self.result_count_label = QtWidgets.QLabel("")
         
-        # 创建结果列表
-        self.result_list = QtWidgets.QListWidget()
-        self.result_list.setIconSize(QtCore.QSize(100, 100))
-        self.result_list.itemDoubleClicked.connect(self.open_image)
+        # 创建结果表格
+        self.result_table = QtWidgets.QTableWidget()
+        self.result_table.setColumnCount(5)  # 缩略图、名称、类型、分辨率、相似度
+        self.result_table.setHorizontalHeaderLabels(["缩略图", "名称", "类型", "分辨率", "相似度"])
+        self.result_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        self.result_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self.result_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.result_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+        self.result_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
+        self.result_table.verticalHeader().setVisible(False)
+        self.result_table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
+        self.result_table.setSelectionBehavior(QtWidgets.QTableWidget.SelectRows)
+        self.result_table.cellDoubleClicked.connect(self.open_image_from_table)
         
         # 创建状态栏
         self.statusBar = QtWidgets.QStatusBar()
@@ -144,7 +153,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         main_layout.addWidget(result_control_panel)
         main_layout.addWidget(self.result_count_label)
         main_layout.addWidget(QtWidgets.QLabel("搜索结果 (双击打开图像):"))
-        main_layout.addWidget(self.result_list)
+        main_layout.addWidget(self.result_table)
         
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择搜索文件夹")
@@ -234,7 +243,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             return
         
         # 清空之前的结果
-        self.result_list.clear()
+        self.result_table.setRowCount(0)
         self.similarity_results = []
         self.statusBar.showMessage("正在搜索中...")
         
@@ -289,6 +298,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                     with Image.open(file_path) as img:
                         width, height = img.size
                         resolution = width * height  # 总像素数
+                        resolution_str = f"{width} × {height}"
                     
                     # 计算相似度
                     img_hash = self.compute_image_hash(file_path, hash_algorithm)
@@ -304,6 +314,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                         'date': file_date,
                         'mtime': file_mtime,
                         'resolution': resolution,
+                        'resolution_str': resolution_str,
                         'width': width,
                         'height': height,
                         'similarity': similarity
@@ -349,65 +360,80 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         sort_index = self.sort_combo.currentIndex()
         self.current_sort_mode = sort_index
         
-        # 清空列表
-        self.result_list.clear()
-        
         # 根据选择的方式排序
         if sort_index == 0:  # 按相似度排序
             sorted_results = sorted(self.similarity_results, 
                                    key=lambda x: x['similarity'], reverse=True)
-            caption = "相似度"
-            value_format = lambda x: f"{x['similarity']:.2f}"
         
         elif sort_index == 1:  # 按名称排序
             sorted_results = sorted(self.similarity_results, 
                                    key=lambda x: x['name'].lower())
-            caption = "文件名"
-            value_format = lambda x: x['name']
         
         elif sort_index == 2:  # 按日期排序
             sorted_results = sorted(self.similarity_results, 
                                    key=lambda x: x['mtime'], reverse=True)
-            caption = "日期"
-            value_format = lambda x: x['date'].strftime("%Y-%m-%d %H:%M:%S")
         
         elif sort_index == 3:  # 按图片类型排序
             sorted_results = sorted(self.similarity_results, 
                                    key=lambda x: x['type'])
-            caption = "类型"
-            value_format = lambda x: x['type']
         
         elif sort_index == 4:  # 按分辨率排序 (从大到小)
             sorted_results = sorted(self.similarity_results, 
                                    key=lambda x: x['resolution'], reverse=True)
-            caption = "分辨率"
-            value_format = lambda x: f"{x['width']}×{x['height']}"
         
         elif sort_index == 5:  # 按分辨率排序 (从小到大)
             sorted_results = sorted(self.similarity_results, 
                                    key=lambda x: x['resolution'])
-            caption = "分辨率"
-            value_format = lambda x: f"{x['width']}×{x['height']}"
         
         # 显示排序后的结果
-        for result in sorted_results:
-            item = QtWidgets.QListWidgetItem()
-            item.setText(f"{os.path.basename(result['path'])} - {caption}: {value_format(result)}")
-            item.setToolTip(result['path'])
+        self.populate_result_table(sorted_results)
+        
+        self.statusBar.showMessage(f"已按{self.sort_combo.currentText()}排序")
+    
+    def populate_result_table(self, results):
+        """填充结果表格"""
+        # 清空表格
+        self.result_table.setRowCount(0)
+        
+        # 设置行数
+        self.result_table.setRowCount(len(results))
+        
+        # 填充表格
+        for row, result in enumerate(results):
+            # 创建缩略图单元格
+            thumbnail_cell = QtWidgets.QTableWidgetItem()
+            thumbnail_cell.setTextAlignment(QtCore.Qt.AlignCenter)
             
-            # 创建缩略图
             try:
+                # 创建缩略图
                 pixmap = QtGui.QPixmap(result['path'])
                 if not pixmap.isNull():
-                    pixmap = pixmap.scaled(100, 100, QtCore.Qt.KeepAspectRatio, 
+                    pixmap = pixmap.scaled(80, 80, QtCore.Qt.KeepAspectRatio, 
                                           QtCore.Qt.SmoothTransformation)
-                    item.setIcon(QtGui.QIcon(pixmap))
+                    thumbnail_cell.setData(QtCore.Qt.DecorationRole, pixmap)
             except Exception as e:
                 print(f"创建缩略图时出错: {e}")
             
-            self.result_list.addItem(item)
-        
-        self.statusBar.showMessage(f"已按{self.sort_combo.currentText()}排序")
+            # 设置单元格的工具提示为文件路径
+            thumbnail_cell.setToolTip(result['path'])
+            
+            # 创建其他信息单元格
+            name_cell = QtWidgets.QTableWidgetItem(result['name'])
+            name_cell.setToolTip(result['path'])
+            
+            type_cell = QtWidgets.QTableWidgetItem(result['type'])
+            resolution_cell = QtWidgets.QTableWidgetItem(result['resolution_str'])
+            similarity_cell = QtWidgets.QTableWidgetItem(f"{result['similarity']:.4f}")
+            
+            # 将单元格添加到表格
+            self.result_table.setItem(row, 0, thumbnail_cell)
+            self.result_table.setItem(row, 1, name_cell)
+            self.result_table.setItem(row, 2, type_cell)
+            self.result_table.setItem(row, 3, resolution_cell)
+            self.result_table.setItem(row, 4, similarity_cell)
+            
+            # 设置行高以适应缩略图
+            self.result_table.setRowHeight(row, 85)
     
     def compute_image_hash(self, image_path, hash_algorithm):
         # 计算图像哈希
@@ -417,19 +443,25 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             img = img.convert('RGB')
         return hash_algorithm(img)
     
-    def open_image(self, item):
-        # 打开选中的图像
+    def open_image_from_table(self, row, column):
+        """从表格中打开图像"""
+        # 获取所选行的第一列（缩略图列）中的工具提示，其中包含文件路径
+        item = self.result_table.item(row, 0)
         if item and item.toolTip():
-            try:
-                # 根据操作系统使用适当的方法打开图像
-                if sys.platform.startswith('darwin'):  # macOS
-                    os.system(f'open "{item.toolTip()}"')
-                elif sys.platform.startswith('win'):   # Windows
-                    os.system(f'start "" "{item.toolTip()}"')
-                else:  # Linux
-                    os.system(f'xdg-open "{item.toolTip()}"')
-            except Exception as e:
-                QtWidgets.QMessageBox.warning(self, "警告", f"无法打开图像: {e}")
+            self.open_image_file(item.toolTip())
+    
+    def open_image_file(self, file_path):
+        """打开图像文件"""
+        try:
+            # 根据操作系统使用适当的方法打开图像
+            if sys.platform.startswith('darwin'):  # macOS
+                os.system(f'open "{file_path}"')
+            elif sys.platform.startswith('win'):   # Windows
+                os.system(f'start "" "{file_path}"')
+            else:  # Linux
+                os.system(f'xdg-open "{file_path}"')
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "警告", f"无法打开图像: {e}")
 
 
 class DropArea(QtWidgets.QLabel):
