@@ -1,5 +1,7 @@
 import sys
 import os
+import time
+from datetime import datetime
 from pathlib import Path
 from PIL import Image
 import imagehash
@@ -20,6 +22,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.source_image_path = None
         self.search_folder = None
         self.similarity_results = []
+        self.current_sort_mode = 0  # 默认按相似度排序
         
     def initUI(self):
         self.setWindowTitle('图像相似度搜索')
@@ -91,10 +94,45 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.search_btn.clicked.connect(self.start_search)
         self.search_btn.setEnabled(False)
         
+        # 创建结果控制面板
+        result_control_panel = QtWidgets.QFrame()
+        result_control_layout = QtWidgets.QHBoxLayout(result_control_panel)
+        
+        # 添加排序选择控件
+        sort_label = QtWidgets.QLabel("排序方式:")
+        sort_label.setFixedWidth(80)
+        self.sort_combo = QtWidgets.QComboBox()
+        self.sort_combo.addItems([
+            "按相似度排序", 
+            "按名称排序", 
+            "按日期排序", 
+            "按图片类型排序", 
+            "按分辨率排序（从大到小）",
+            "按分辨率排序（从小到大）"
+        ])
+        self.sort_combo.setEnabled(False)
+        
+        # 添加应用排序按钮
+        self.apply_sort_btn = QtWidgets.QPushButton("应用排序")
+        self.apply_sort_btn.setEnabled(False)
+        self.apply_sort_btn.clicked.connect(self.apply_sort)
+        
+        result_control_layout.addWidget(sort_label)
+        result_control_layout.addWidget(self.sort_combo)
+        result_control_layout.addWidget(self.apply_sort_btn)
+        result_control_layout.addStretch(1)
+        
+        # 创建结果数量标签
+        self.result_count_label = QtWidgets.QLabel("")
+        
         # 创建结果列表
         self.result_list = QtWidgets.QListWidget()
         self.result_list.setIconSize(QtCore.QSize(100, 100))
         self.result_list.itemDoubleClicked.connect(self.open_image)
+        
+        # 创建状态栏
+        self.statusBar = QtWidgets.QStatusBar()
+        self.setStatusBar(self.statusBar)
         
         # 添加到主布局
         main_layout.addWidget(QtWidgets.QLabel("将源图像拖放到下方区域:"))
@@ -103,6 +141,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         main_layout.addLayout(folder_layout)
         main_layout.addLayout(hash_layout)
         main_layout.addWidget(self.search_btn)
+        main_layout.addWidget(result_control_panel)
+        main_layout.addWidget(self.result_count_label)
         main_layout.addWidget(QtWidgets.QLabel("搜索结果 (双击打开图像):"))
         main_layout.addWidget(self.result_list)
         
@@ -196,6 +236,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 清空之前的结果
         self.result_list.clear()
         self.similarity_results = []
+        self.statusBar.showMessage("正在搜索中...")
         
         # 显示进度对话框
         progress = QtWidgets.QProgressDialog("计算图像相似度...", "取消", 0, 100, self)
@@ -234,37 +275,57 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 QtWidgets.QApplication.processEvents()
                 
                 try:
-                    img_hash = self.compute_image_hash(str(img_path), hash_algorithm)
-                    # 计算哈希距离并转换为相似度
+                    # 获取文件信息
+                    file_path = str(img_path)
+                    file_name = os.path.basename(file_path)
+                    file_ext = os.path.splitext(file_path)[1].lower()
+                    file_type = file_ext[1:].upper()
+                    
+                    # 获取文件修改日期
+                    file_mtime = os.path.getmtime(file_path)
+                    file_date = datetime.fromtimestamp(file_mtime)
+                    
+                    # 获取图像分辨率
+                    with Image.open(file_path) as img:
+                        width, height = img.size
+                        resolution = width * height  # 总像素数
+                    
+                    # 计算相似度
+                    img_hash = self.compute_image_hash(file_path, hash_algorithm)
                     hash_distance = source_hash - img_hash
                     max_distance = len(source_hash.hash) ** 2
                     similarity = 1 - (hash_distance / max_distance)
-                    self.similarity_results.append((str(img_path), similarity))
+                    
+                    # 存储所有信息
+                    image_info = {
+                        'path': file_path,
+                        'name': file_name,
+                        'type': file_type,
+                        'date': file_date,
+                        'mtime': file_mtime,
+                        'resolution': resolution,
+                        'width': width,
+                        'height': height,
+                        'similarity': similarity
+                    }
+                    
+                    self.similarity_results.append(image_info)
                 except Exception as e:
                     print(f"处理图像 {img_path} 时出错: {e}")
             
-            # 按相似度排序
-            self.similarity_results.sort(key=lambda x: x[1], reverse=True)
+            # 更新结果数量标签
+            self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果")
             
-            # 显示结果
-            for img_path, similarity in self.similarity_results:
-                item = QtWidgets.QListWidgetItem()
-                item.setText(f"{os.path.basename(img_path)} - 相似度: {similarity:.2f}")
-                item.setToolTip(img_path)
-                
-                # 创建缩略图
-                try:
-                    pixmap = QtGui.QPixmap(img_path)
-                    if not pixmap.isNull():
-                        pixmap = pixmap.scaled(100, 100, QtCore.Qt.KeepAspectRatio, 
-                                              QtCore.Qt.SmoothTransformation)
-                        item.setIcon(QtGui.QIcon(pixmap))
-                except Exception as e:
-                    print(f"创建缩略图时出错: {e}")
-                
-                self.result_list.addItem(item)
+            # 启用排序功能
+            self.sort_combo.setEnabled(True)
+            self.apply_sort_btn.setEnabled(True)
+            
+            # 默认按相似度排序并显示结果
+            self.sort_combo.setCurrentIndex(0)
+            self.apply_sort()
             
             progress.setValue(100)
+            self.statusBar.showMessage("搜索完成")
             
             # 显示搜索完成的消息
             QtWidgets.QMessageBox.information(self, "搜索完成", 
@@ -272,8 +333,81 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "错误", f"处理图像时出错: {e}")
+            self.statusBar.showMessage("搜索出错")
         finally:
             progress.close()
+    
+    def apply_sort(self):
+        """应用所选的排序方式"""
+        if not self.similarity_results:
+            return
+        
+        self.statusBar.showMessage("正在排序...")
+        QtWidgets.QApplication.processEvents()
+        
+        # 获取排序方式
+        sort_index = self.sort_combo.currentIndex()
+        self.current_sort_mode = sort_index
+        
+        # 清空列表
+        self.result_list.clear()
+        
+        # 根据选择的方式排序
+        if sort_index == 0:  # 按相似度排序
+            sorted_results = sorted(self.similarity_results, 
+                                   key=lambda x: x['similarity'], reverse=True)
+            caption = "相似度"
+            value_format = lambda x: f"{x['similarity']:.2f}"
+        
+        elif sort_index == 1:  # 按名称排序
+            sorted_results = sorted(self.similarity_results, 
+                                   key=lambda x: x['name'].lower())
+            caption = "文件名"
+            value_format = lambda x: x['name']
+        
+        elif sort_index == 2:  # 按日期排序
+            sorted_results = sorted(self.similarity_results, 
+                                   key=lambda x: x['mtime'], reverse=True)
+            caption = "日期"
+            value_format = lambda x: x['date'].strftime("%Y-%m-%d %H:%M:%S")
+        
+        elif sort_index == 3:  # 按图片类型排序
+            sorted_results = sorted(self.similarity_results, 
+                                   key=lambda x: x['type'])
+            caption = "类型"
+            value_format = lambda x: x['type']
+        
+        elif sort_index == 4:  # 按分辨率排序 (从大到小)
+            sorted_results = sorted(self.similarity_results, 
+                                   key=lambda x: x['resolution'], reverse=True)
+            caption = "分辨率"
+            value_format = lambda x: f"{x['width']}×{x['height']}"
+        
+        elif sort_index == 5:  # 按分辨率排序 (从小到大)
+            sorted_results = sorted(self.similarity_results, 
+                                   key=lambda x: x['resolution'])
+            caption = "分辨率"
+            value_format = lambda x: f"{x['width']}×{x['height']}"
+        
+        # 显示排序后的结果
+        for result in sorted_results:
+            item = QtWidgets.QListWidgetItem()
+            item.setText(f"{os.path.basename(result['path'])} - {caption}: {value_format(result)}")
+            item.setToolTip(result['path'])
+            
+            # 创建缩略图
+            try:
+                pixmap = QtGui.QPixmap(result['path'])
+                if not pixmap.isNull():
+                    pixmap = pixmap.scaled(100, 100, QtCore.Qt.KeepAspectRatio, 
+                                          QtCore.Qt.SmoothTransformation)
+                    item.setIcon(QtGui.QIcon(pixmap))
+            except Exception as e:
+                print(f"创建缩略图时出错: {e}")
+            
+            self.result_list.addItem(item)
+        
+        self.statusBar.showMessage(f"已按{self.sort_combo.currentText()}排序")
     
     def compute_image_hash(self, image_path, hash_algorithm):
         # 计算图像哈希
