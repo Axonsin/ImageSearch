@@ -29,6 +29,29 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.setWindowTitle('图像相似度搜索')
         self.setGeometry(100, 100, 1000, 700)
         
+        # 创建菜单栏
+        menu_bar = self.menuBar()  # 获取主窗口的菜单栏
+
+        # 创建顶级菜单（如“文件”、“编辑”等）
+        file_menu = menu_bar.addMenu("文件")  # 添加“文件”菜单
+        edit_menu = menu_bar.addMenu("编辑")  # 添加“编辑”菜单
+        help_menu = menu_bar.addMenu("帮助")  # 添加“帮助”菜单
+
+        # 为“文件”菜单添加子菜单项
+        open_action = QtGui.QAction("打开", self)
+        save_action = QtGui.QAction("保存", self)
+        exit_action = QtGui.QAction("退出", self)
+
+         # 将子菜单项添加到“文件”菜单中
+        file_menu.addAction(open_action)
+        file_menu.addAction(save_action)
+        file_menu.addAction(exit_action)
+
+        # 连接信号与槽（与PyQt5一致）
+        exit_action.triggered.connect(self.close)  # 点击“退出”关闭窗口
+
+
+
         # 创建中央部件
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
