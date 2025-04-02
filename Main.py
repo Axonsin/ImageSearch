@@ -220,33 +220,74 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
 
     def handle_open_unity(self):
         # 调用独立模块的检测函数
-        project_path, error = DCCdetect.get_unity_project_path()
+        project_paths, error = DCCdetect.get_unity_project_paths()  # 使用新函数名
+        
         if error:
-            DCCdetect.show_message_box(self, "错误", error, info=False)
+            DCCdetect.show_message_box(self, "错误", "不支持的操作系统", info=False)
             return
 
-        if not project_path:
+        if not project_paths:
             DCCdetect.show_message_box(self, "提示", "未检测到正在运行的Unity项目。")
             return
-
-        if not Path(project_path).exists():
-            DCCdetect.show_message_box(self, "错误", "检测到项目路径，但路径不存在。", info=False)
+        
+        # 过滤掉不存在的路径
+        valid_paths = [path for path in project_paths if Path(path).exists()]
+        
+        if not valid_paths:
+            DCCdetect.show_message_box(self, "错误", "检测到项目路径，但所有路径都不存在。", info=False)
             return
-
-        # 弹出确认对话框
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            "确认操作",
-            f"检测到Unity项目路径：\n{project_path}\n\n是否打开该项目文件夹？",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
-        )
-
-        if reply == QtWidgets.QMessageBox.Yes:
-            result = DCCdetect.open_project_folder(project_path)
-            if isinstance(result, str):
-                DCCdetect.show_message_box(self, "错误", result, info=False)
-            else:
-                DCCdetect.show_message_box(self, "成功", "正在打开项目文件夹...", info=True)
+        
+        # 只有一个项目时直接询问
+        if len(valid_paths) == 1:
+            project_path = valid_paths[0]
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "确认操作",
+                f"检测到Unity项目路径：\n{project_path}\n\n是否打开该项目文件夹？",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+            )
+            
+            if reply == QtWidgets.QMessageBox.Yes:
+                result = DCCdetect.open_project_folder(project_path)
+                if isinstance(result, str):
+                    DCCdetect.show_message_box(self, "错误", result, info=False)
+                else:
+                    DCCdetect.show_message_box(self, "成功", "正在打开项目文件夹...", info=True)
+        else:
+            # 多个项目时显示选择对话框
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("选择Unity项目")
+            layout = QtWidgets.QVBoxLayout()
+            
+            label = QtWidgets.QLabel("检测到多个Unity项目，请选择要打开的项目文件夹：")
+            layout.addWidget(label)
+            
+            list_widget = QtWidgets.QListWidget()
+            for path in valid_paths:
+                item = QtWidgets.QListWidgetItem(path)
+                list_widget.addItem(item)
+            list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            list_widget.setCurrentRow(0)  # 默认选中第一个
+            layout.addWidget(list_widget)
+            
+            buttons = QtWidgets.QDialogButtonBox(
+                QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+            )
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            
+            dialog.setLayout(layout)
+            
+            if dialog.exec_() == QtWidgets.QDialog.Accepted:
+                selected_items = list_widget.selectedItems()
+                if selected_items:
+                    selected_path = selected_items[0].text()
+                    result = DCCdetect.open_project_folder(selected_path)
+                    if isinstance(result, str):
+                        DCCdetect.show_message_box(self, "错误", result, info=False)
+                    else:
+                        DCCdetect.show_message_box(self, "成功", "已打开文件夹。", info=True)
     
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择搜索文件夹")
