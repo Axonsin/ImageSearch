@@ -423,7 +423,24 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             
             type_cell = QtWidgets.QTableWidgetItem(result['type'])
             resolution_cell = QtWidgets.QTableWidgetItem(result['resolution_str'])
+            similarity_value = round(result['similarity'],2)
             similarity_cell = QtWidgets.QTableWidgetItem(f"{result['similarity']:.4f}")
+             # 根据相似度设置不同的背景颜色
+            if similarity_value < 0.5:
+                # 红色背景
+                similarity_cell.setBackground(QtGui.QColor(255, 100, 100))
+                brush = QtGui.QBrush(QtGui.QColor(255, 100, 100))
+            elif similarity_value < 0.8:
+                # 黄色背景
+                similarity_cell.setBackground(QtGui.QColor(255, 255, 100))
+                brush = QtGui.QBrush(QtGui.QColor(255, 100, 100))
+            else:
+                # 绿色背景
+                similarity_cell.setBackground(QtGui.QColor(100, 255, 100))
+                brush = QtGui.QBrush(QtGui.QColor(255, 100, 100))
+            similarity_cell.setBackground(brush)
+
+                
             
             # 将单元格添加到表格
             self.result_table.setItem(row, 0, thumbnail_cell)
@@ -515,9 +532,9 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     
     # 应用Qt Material风格（如果可用）
-    if HAS_QT_MATERIAL:
-        # 使用蓝色主题
-        apply_stylesheet(app, theme='light_blue.xml')
+    # if HAS_QT_MATERIAL:
+    #     # 使用蓝色主题
+    #     apply_stylesheet(app, theme='light_blue.xml')
     
     window = ImageSimilarityApp()
     window.show()
