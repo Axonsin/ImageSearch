@@ -17,7 +17,7 @@ def get_unity_project_path():
                 cmdline = proc.info['cmdline']
                 if cmdline:
                     for i, arg in enumerate(cmdline):
-                        if arg == '-projectPath' and i + 1 < len(cmdline):
+                        if arg.lower() == '-projectpath' and i + 1 < len(cmdline):
                             project_path = cmdline[i + 1]
                             break
     elif system == "darwin":
@@ -33,7 +33,14 @@ def get_unity_project_path():
         error = 1
         return None, error
 
+    # 在get_unity_project_path函数中添加调试信息
+    print(f"系统平台: {system}")
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        if 'unity' in proc.info['name'].lower():
+            print(f"找到Unity相关进程: {proc.info['name']} (PID: {proc.info['pid']})")
+            print(f"命令行参数: {proc.info['cmdline']}")
     return project_path, error
+
 
 def open_project_folder(path):
     if sys.platform == "win32":
