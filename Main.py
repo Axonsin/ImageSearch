@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import shutil
 from datetime import datetime
 from pathlib import Path
 from PIL import Image
@@ -137,7 +138,33 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.result_table.verticalHeader().setVisible(False)
         self.result_table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
         self.result_table.setSelectionBehavior(QtWidgets.QTableWidget.SelectRows)
+        self.result_table.setSelectionMode(QtWidgets.QTableWidget.ExtendedSelection)
         self.result_table.cellDoubleClicked.connect(self.open_image_from_table)
+        
+        # 设置表格支持右键菜单
+        self.result_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.result_table.customContextMenuRequested.connect(self.show_context_menu)
+        
+        # 创建文件操作按钮区域
+        file_ops_frame = QtWidgets.QFrame()
+        file_ops_layout = QtWidgets.QHBoxLayout(file_ops_frame)
+        self.delete_btn = QtWidgets.QPushButton("删除选中项")
+        self.copy_btn = QtWidgets.QPushButton("复制到...")
+        self.rename_btn = QtWidgets.QPushButton("批量重命名...")
+        self.open_folder_btn = QtWidgets.QPushButton("在文件管理器中打开")
+
+        # 连接按钮到对应方法
+        self.delete_btn.clicked.connect(self.delete_selected)
+        self.copy_btn.clicked.connect(self.copy_selected)
+        self.rename_btn.clicked.connect(self.rename_selected)
+        self.open_folder_btn.clicked.connect(self.open_in_file_manager)
+
+        # 添加按钮到布局
+        file_ops_layout.addWidget(self.delete_btn)
+        file_ops_layout.addWidget(self.copy_btn)
+        file_ops_layout.addWidget(self.rename_btn)
+        file_ops_layout.addWidget(self.open_folder_btn)
+        file_ops_layout.addStretch(1)
         
         # 创建状态栏
         self.statusBar = QtWidgets.QStatusBar()
@@ -154,6 +181,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         main_layout.addWidget(self.result_count_label)
         main_layout.addWidget(QtWidgets.QLabel("搜索结果 (双击打开图像):"))
         main_layout.addWidget(self.result_table)
+        main_layout.addWidget(file_ops_frame)
         
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择搜索文件夹")
@@ -423,24 +451,21 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             
             type_cell = QtWidgets.QTableWidgetItem(result['type'])
             resolution_cell = QtWidgets.QTableWidgetItem(result['resolution_str'])
-            similarity_value = round(result['similarity'],2)
-            similarity_cell = QtWidgets.QTableWidgetItem(f"{result['similarity']:.4f}")
-             # 根据相似度设置不同的背景颜色
+            
+            # 创建相似度单元格并设置背景颜色
+            similarity_value = result['similarity']
+            similarity_cell = QtWidgets.QTableWidgetItem(f"{similarity_value:.4f}")
+            
+            # 根据相似度设置不同的背景颜色
             if similarity_value < 0.5:
                 # 红色背景
-                similarity_cell.setBackground(QtGui.QColor(255, 100, 100))
-                brush = QtGui.QBrush(QtGui.QColor(255, 100, 100))
+                similarity_cell.setBackground(QtGui.QColor(255, 150, 150))
             elif similarity_value < 0.8:
                 # 黄色背景
-                similarity_cell.setBackground(QtGui.QColor(255, 255, 100))
-                brush = QtGui.QBrush(QtGui.QColor(255, 100, 100))
+                similarity_cell.setBackground(QtGui.QColor(255, 255, 150))
             else:
                 # 绿色背景
-                similarity_cell.setBackground(QtGui.QColor(100, 255, 100))
-                brush = QtGui.QBrush(QtGui.QColor(255, 100, 100))
-            similarity_cell.setBackground(brush)
-
-                
+                similarity_cell.setBackground(QtGui.QColor(150, 255, 150))
             
             # 将单元格添加到表格
             self.result_table.setItem(row, 0, thumbnail_cell)
@@ -479,6 +504,243 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 os.system(f'xdg-open "{file_path}"')
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "警告", f"无法打开图像: {e}")
+    
+    def show_context_menu(self, position):
+        """显示右键菜单"""
+        # 创建右键菜单
+        menu = QtWidgets.QMenu()
+        
+        # 获取选中项
+        selected_rows = set(item.row() for item in self.result_table.selectedItems())
+        if selected_rows:
+            menu.addAction("删除选中项", self.delete_selected)
+            menu.addAction("复制到...", self.copy_selected)
+            menu.addAction("批量重命名...", self.rename_selected)
+            menu.addAction("在文件管理器中打开", self.open_in_file_manager)
+        
+        # 显示菜单
+        menu.exec_(self.result_table.mapToGlobal(position))
+    
+    def delete_selected(self):
+        """删除选中的图像文件"""
+        selected_rows = sorted(set(item.row() for item in self.result_table.selectedItems()), reverse=True)
+        if not selected_rows:
+            return
+        
+        # 确认对话框
+        reply = QtWidgets.QMessageBox.question(
+            self, '确认删除', 
+            f'确定要删除选中的 {len(selected_rows)} 个文件吗？\n此操作无法撤销！',
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No
+        )
+        
+        if reply == QtWidgets.QMessageBox.Yes:
+            deleted_count = 0
+            # 获取要删除的文件路径
+            files_to_delete = []
+            for row in selected_rows:
+                file_path = self.result_table.item(row, 0).toolTip()
+                files_to_delete.append(file_path)
+            
+            # 删除文件并更新数据
+            for file_path in files_to_delete:
+                try:
+                    os.remove(file_path)
+                    # 从结果中移除
+                    for i, result in enumerate(self.similarity_results[:]):
+                        if result['path'] == file_path:
+                            self.similarity_results.pop(i)
+                            deleted_count += 1
+                            break
+                except Exception as e:
+                    QtWidgets.QMessageBox.warning(self, "删除失败", f"无法删除文件: {file_path}\n错误: {e}")
+            
+            # 更新UI
+            self.apply_sort()
+            self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果")
+            QtWidgets.QMessageBox.information(self, "删除完成", f"成功删除 {deleted_count} 个文件")
+    
+    def copy_selected(self):
+        """复制选中的图像文件到指定文件夹"""
+        selected_rows = set(item.row() for item in self.result_table.selectedItems())
+        if not selected_rows:
+            return
+        
+        # 选择目标文件夹
+        dest_folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择目标文件夹")
+        if not dest_folder:
+            return
+        
+        # 收集要复制的文件
+        files_to_copy = []
+        for row in selected_rows:
+            file_path = self.result_table.item(row, 0).toolTip()
+            files_to_copy.append(file_path)
+        
+        # 显示进度对话框
+        progress = QtWidgets.QProgressDialog("正在复制文件...", "取消", 0, len(files_to_copy), self)
+        progress.setWindowModality(QtCore.Qt.WindowModal)
+        
+        # 复制文件
+        copied_count = 0
+        for i, src_path in enumerate(files_to_copy):
+            if progress.wasCanceled():
+                break
+            
+            try:
+                file_name = os.path.basename(src_path)
+                dest_path = os.path.join(dest_folder, file_name)
+                
+                # 处理文件名冲突
+                counter = 1
+                name, ext = os.path.splitext(file_name)
+                while os.path.exists(dest_path):
+                    dest_path = os.path.join(dest_folder, f"{name}_copy{counter}{ext}")
+                    counter += 1
+                
+                # 复制文件
+                shutil.copy2(src_path, dest_path)
+                copied_count += 1
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(self, "复制失败", f"无法复制文件: {src_path}\n错误: {e}")
+            
+            progress.setValue(i + 1)
+        
+        progress.close()
+        QtWidgets.QMessageBox.information(self, "复制完成", f"成功复制 {copied_count} 个文件到 {dest_folder}")
+    
+    def rename_selected(self):
+        """批量重命名选中的图像文件"""
+        selected_rows = sorted(set(item.row() for item in self.result_table.selectedItems()))
+        if not selected_rows:
+            return
+        
+        # 创建重命名对话框
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("批量重命名")
+        dialog.setMinimumWidth(400)
+        
+        layout = QtWidgets.QVBoxLayout(dialog)
+        
+        # 添加说明标签
+        layout.addWidget(QtWidgets.QLabel("输入重命名格式："))
+        layout.addWidget(QtWidgets.QLabel("{n} - 序号  {old} - 原文件名  {ext} - 扩展名"))
+        
+        # 添加格式输入框
+        format_input = QtWidgets.QLineEdit("image_{n}")
+        layout.addWidget(format_input)
+        
+        # 添加起始编号选择
+        start_num_layout = QtWidgets.QHBoxLayout()
+        start_num_layout.addWidget(QtWidgets.QLabel("起始编号:"))
+        start_num_spin = QtWidgets.QSpinBox()
+        start_num_spin.setMinimum(1)
+        start_num_spin.setValue(1)
+        start_num_layout.addWidget(start_num_spin)
+        layout.addLayout(start_num_layout)
+        
+        # 添加预览区域
+        layout.addWidget(QtWidgets.QLabel("预览:"))
+        preview_list = QtWidgets.QListWidget()
+        layout.addWidget(preview_list)
+        
+        # 添加按钮
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
+            QtCore.Qt.Horizontal
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        
+        # 更新预览函数
+        def update_preview():
+            preview_list.clear()
+            name_format = format_input.text()
+            start_idx = start_num_spin.value()
+            
+            for i, row in enumerate(selected_rows):
+                file_path = self.result_table.item(row, 0).toolTip()
+                old_name = os.path.basename(file_path)
+                name, ext = os.path.splitext(old_name)
+                
+                # 生成新文件名
+                new_name = name_format.replace("{n}", str(start_idx + i))
+                new_name = new_name.replace("{old}", name)
+                new_name = new_name.replace("{ext}", ext)
+                if not new_name.endswith(ext):
+                    new_name += ext
+                
+                preview_list.addItem(f"{old_name} → {new_name}")
+        
+        # 连接信号
+        format_input.textChanged.connect(update_preview)
+        start_num_spin.valueChanged.connect(update_preview)
+        
+        # 初始化预览
+        update_preview()
+        
+        # 显示对话框
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            # 执行重命名
+            name_format = format_input.text()
+            start_idx = start_num_spin.value()
+            renamed_count = 0
+            
+            for i, row in enumerate(selected_rows):
+                file_path = self.result_table.item(row, 0).toolTip()
+                folder = os.path.dirname(file_path)
+                old_name = os.path.basename(file_path)
+                name, ext = os.path.splitext(old_name)
+                
+                # 生成新文件名
+                new_name = name_format.replace("{n}", str(start_idx + i))
+                new_name = new_name.replace("{old}", name)
+                new_name = new_name.replace("{ext}", ext)
+                if not new_name.endswith(ext):
+                    new_name += ext
+                    
+                new_path = os.path.join(folder, new_name)
+                
+                # 执行重命名
+                try:
+                    os.rename(file_path, new_path)
+                    # 更新数据
+                    for result in self.similarity_results:
+                        if result['path'] == file_path:
+                            result['path'] = new_path
+                            result['name'] = new_name
+                            renamed_count += 1
+                            break
+                except Exception as e:
+                    QtWidgets.QMessageBox.warning(self, "重命名失败", f"无法重命名文件: {file_path}\n错误: {e}")
+            
+            # 更新UI
+            self.apply_sort()
+            QtWidgets.QMessageBox.information(self, "重命名完成", f"成功重命名 {renamed_count} 个文件")
+    
+    def open_in_file_manager(self):
+        """在文件管理器中打开选中图像所在的文件夹"""
+        selected_rows = set(item.row() for item in self.result_table.selectedItems())
+        if not selected_rows:
+            return
+        
+        # 获取第一个选中行的文件路径
+        first_row = min(selected_rows)
+        file_path = self.result_table.item(first_row, 0).toolTip()
+        folder_path = os.path.dirname(file_path)
+        
+        # 根据操作系统打开文件夹
+        try:
+            if sys.platform.startswith('darwin'):  # macOS
+                os.system(f'open "{folder_path}"')
+            elif sys.platform.startswith('win'):   # Windows
+                os.startfile(folder_path)
+            else:  # Linux
+                os.system(f'xdg-open "{folder_path}"')
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "警告", f"无法打开文件夹: {e}")
 
 
 class DropArea(QtWidgets.QLabel):
