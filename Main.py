@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image
 import imagehash
 from qtpy import QtWidgets, QtCore, QtGui
+import DCCdetect
 
 # 尝试导入Qt Material
 try:
@@ -41,14 +42,17 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         open_action = QtGui.QAction("打开", self)
         save_action = QtGui.QAction("保存", self)
         exit_action = QtGui.QAction("退出", self)
+        open_unity_action = QtGui.QAction("打开当前Unity项目路径", self)
 
          # 将子菜单项添加到“文件”菜单中
         file_menu.addAction(open_action)
         file_menu.addAction(save_action)
         file_menu.addAction(exit_action)
+        file_menu.addAction(open_unity_action)
 
         # 连接信号与槽（与PyQt5一致）
         exit_action.triggered.connect(self.close)  # 点击“退出”关闭窗口
+        open_unity_action.triggered.connect(self.handle_open_unity)
 
 
 
@@ -206,6 +210,44 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         main_layout.addWidget(self.result_table)
         main_layout.addWidget(file_ops_frame)
         
+    
+    #def init_actions(self):
+        # 创建并连接菜单项
+        #self.open_unity_action = QtGui.QAction("打开当前Unity项目路径", self)
+        #self.open_unity_action.triggered.connect(self.handle_open_unity)
+        #self.file_menu.addAction(self.open_unity_action)
+    
+
+    def handle_open_unity(self):
+        # 调用独立模块的检测函数
+        project_path, error = DCCdetect.get_unity_project_path()
+        if error:
+            DCCdetect.show_message_box(self, "错误", error, info=False)
+            return
+
+        if not project_path:
+            DCCdetect.show_message_box(self, "提示", "未检测到正在运行的Unity项目。")
+            return
+
+        if not Path(project_path).exists():
+            DCCdetect.show_message_box(self, "错误", "检测到项目路径，但路径不存在。", info=False)
+            return
+
+        # 弹出确认对话框
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "确认操作",
+            f"检测到Unity项目路径：\n{project_path}\n\n是否打开该项目文件夹？",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            result = DCCdetect.open_project_folder(project_path)
+            if isinstance(result, str):
+                DCCdetect.show_message_box(self, "错误", result, info=False)
+            else:
+                DCCdetect.show_message_box(self, "成功", "正在打开项目文件夹...", info=True)
+    
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择搜索文件夹")
         if folder:
