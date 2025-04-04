@@ -8,6 +8,8 @@ from PIL import Image
 import imagehash
 from qtpy import QtWidgets, QtCore, QtGui
 import DCCdetect
+from search_history import SearchHistoryManager
+import traceback
 
 # 尝试导入Qt Material
 try:
@@ -20,12 +22,17 @@ except ImportError:
 class ImageSimilarityApp(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.initUI()
         self.source_image_path = None
         self.search_folders = []  # 修改为列表，存储多个文件夹路径
         self.similarity_results = []
         self.current_sort_mode = 0  # 默认按相似度排序
-        
+
+        # 初始化历史记录管理器
+        self.history_manager = SearchHistoryManager(self)
+        assert isinstance(self.history_manager, SearchHistoryManager), "历史记录管理器初始化失败"#断源
+        self.history_manager.restore_history_state = self.restore_history_state
+        self.initUI()
+            
     def initUI(self):
         self.setWindowTitle('图像相似度搜索')
         self.setGeometry(100, 100, 1000, 700)
@@ -34,18 +41,21 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         menu_bar = self.menuBar()  # 获取主窗口的菜单栏
 
         # 创建顶级菜单（如“文件”、“编辑”等）
-        file_menu = menu_bar.addMenu("文件")  # 添加“文件”菜单
+        file_menu = menu_bar.addMenu("快速打开项目文件夹")  # 添加“文件”菜单
         edit_menu = menu_bar.addMenu("编辑")  # 添加“编辑”菜单
         help_menu = menu_bar.addMenu("帮助")  # 添加“帮助”菜单
 
+        # 添加历史记录菜单
+        self.history_manager.create_history_menu(menu_bar)
+
         # 为“文件”菜单添加子菜单项
-        open_action = QtGui.QAction("打开", self)
         save_action = QtGui.QAction("保存", self)
         exit_action = QtGui.QAction("退出", self)
         open_unity_action = QtGui.QAction("打开当前Unity项目路径", self)
+        open_blender_action = QtGui.QAction("打开当前Blender项目路径", self)
 
          # 将子菜单项添加到“文件”菜单中
-        file_menu.addAction(open_action)
+        file_menu.addAction(open_blender_action)
         file_menu.addAction(save_action)
         file_menu.addAction(exit_action)
         file_menu.addAction(open_unity_action)
@@ -53,6 +63,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 连接信号与槽（与PyQt5一致）
         exit_action.triggered.connect(self.close)  # 点击“退出”关闭窗口
         open_unity_action.triggered.connect(self.handle_open_unity)
+        open_blender_action.triggered.connect(self.handle_open_blender)
 
 
 
@@ -344,6 +355,77 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                     else:
                         DCCdetect.show_message_box(self, "成功", "已打开文件夹。", info=True)
     
+    def handle_open_blender(self):
+    # 调用独立模块的检测函数
+        project_infos, error = DCCdetect.get_blender_project_paths()
+        
+        if error:
+            DCCdetect.show_message_box(self, "错误", "不支持的操作系统", info=False)
+            return
+
+        if not project_infos:
+            DCCdetect.show_message_box(self, "提示", "未检测到正在运行的Blender项目。")
+            return
+        
+        # 过滤掉不存在的路径
+        valid_projects = [p for p in project_infos if Path(p['folder']).exists()]
+        
+        if not valid_projects:
+            DCCdetect.show_message_box(self, "错误", "检测到项目路径，但所有路径都不存在。", info=False)
+            return
+        
+        # 只有一个项目时直接询问
+        if len(valid_projects) == 1:
+            project = valid_projects[0]
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "确认操作",
+                f"检测到Blender项目：\n{project['file']}\n\n路径：{project['folder']}\n\n是否打开该项目文件夹？",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+            )
+            
+            if reply == QtWidgets.QMessageBox.Yes:
+                result = DCCdetect.open_project_folder(project['folder'])
+                if isinstance(result, str):
+                    DCCdetect.show_message_box(self, "错误", result, info=False)
+                else:
+                    DCCdetect.show_message_box(self, "成功", "正在打开项目文件夹...", info=True)
+        else:
+            # 多个项目时显示选择对话框
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("选择Blender项目")
+            layout = QtWidgets.QVBoxLayout()
+            
+            label = QtWidgets.QLabel("检测到多个Blender项目，请选择要打开的项目文件夹：")
+            layout.addWidget(label)
+            
+            list_widget = QtWidgets.QListWidget()
+            for project in valid_projects:
+                item = QtWidgets.QListWidgetItem(f"{project['file']} - {project['folder']}")
+                item.setData(QtCore.Qt.UserRole, project['folder'])  # 存储文件夹路径
+                list_widget.addItem(item)
+            list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            list_widget.setCurrentRow(0)  # 默认选中第一个
+            layout.addWidget(list_widget)
+            
+            buttons = QtWidgets.QDialogButtonBox(
+                QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+            )
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            
+            dialog.setLayout(layout)
+            
+            if dialog.exec_() == QtWidgets.QDialog.Accepted:
+                selected_items = list_widget.selectedItems()
+                if selected_items:
+                    selected_path = selected_items[0].data(QtCore.Qt.UserRole)
+                    result = DCCdetect.open_project_folder(selected_path)
+                    if isinstance(result, str):
+                        DCCdetect.show_message_box(self, "错误", result, info=False)
+                    else:
+                        DCCdetect.show_message_box(self, "成功", "已打开文件夹。", info=True)
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择搜索文件夹")
         if folder:
@@ -426,7 +508,38 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             return imagehash.dhash
         else:  # 默认使用pHash
             return imagehash.phash
-            
+    
+
+    # 恢复历史记录状态
+    def restore_history_state(self, history, valid_folders):
+        """恢复历史记录状态"""
+        # 设置源图像
+        self.set_source_image(history['source_image'])
+        
+        # 清除并设置搜索文件夹
+        self.search_folders = valid_folders
+        self.folders_list.clear()
+        for folder in valid_folders:
+            self.folders_list.addItem(folder)
+        self.folder_count_label.setText(f"已选择 {len(valid_folders)} 个搜索文件夹")
+        
+        # 设置哈希算法
+        hash_method = history.get('hash_method', 0)
+        self.hash_combo.setCurrentIndex(hash_method)
+        
+        # 更新搜索按钮状态
+        self.update_search_button_state()
+        
+        # 询问是否立即执行搜索
+        reply = QtWidgets.QMessageBox.question(
+            self, '确认操作', 
+            '是否立即执行搜索？',
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes
+        )
+        
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.start_search()
     def start_search(self):
         if not self.source_image_path or not self.search_folders:
             return
@@ -512,8 +625,16 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                     }
                     
                     self.similarity_results.append(image_info)
+                    if self.similarity_results:
+                        self.history_manager.add_history_item(
+                            self.source_image_path,
+                            self.search_folders,
+                            self.hash_combo.currentIndex(),
+                            len(self.similarity_results))
                 except Exception as e:
                     print(f"处理图像 {img_path} 时出错: {e}")
+                    print(f"添加历史记录时出错: {e}")
+                    traceback.print_exc()
             
             # 更新结果数量标签
             self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果")

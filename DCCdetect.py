@@ -7,7 +7,7 @@ import subprocess
 from qtpy import QtWidgets, QtCore, QtGui
 
 
-def get_unity_project_paths():  # 改为复数形式
+def get_unity_project_paths(): 
     system = sys.platform
     project_paths = []  # 使用列表存储多个项目
     error = 0
@@ -20,7 +20,7 @@ def get_unity_project_paths():  # 改为复数形式
                     for i, arg in enumerate(cmdline):
                         if arg.lower() == '-projectpath' and i + 1 < len(cmdline):
                             project_path = cmdline[i + 1]
-                            if project_path not in project_paths:  # 避免重复
+                            if project_path not in project_paths:  
                                 project_paths.append(project_path)
     elif system == "darwin":
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -30,7 +30,7 @@ def get_unity_project_paths():  # 改为复数形式
                     for i, arg in enumerate(cmdline):
                         if arg.lower() == '-projectpath' and i + 1 < len(cmdline):
                             project_path = cmdline[i + 1]
-                            if project_path not in project_paths:  # 避免重复
+                            if project_path not in project_paths:  
                                 project_paths.append(project_path)
     else:
         error = 1
@@ -61,6 +61,57 @@ def get_unity_project_paths():  # 改为复数形式
             print(f"找到Unity相关进程: {proc.info['name']} (PID: {proc.info['pid']})")
             print(f"命令行参数: {proc.info['cmdline']}")
     return project_path, error
+
+
+def get_blender_project_paths():
+    """检测当前运行的Blender进程并获取项目路径"""
+    system = sys.platform
+    project_paths = []  # 使用列表存储多个项目
+    error = 0
+    
+    if system in ["win32", "darwin", "linux"]:  # 支持Windows、macOS和Linux
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            # 检查进程名是否与Blender相关
+            process_name = proc.info['name'].lower()
+            if ('blender' in process_name):
+                cmdline = proc.info['cmdline']
+                if cmdline:
+                    # 搜索命令行中的.blend文件
+                    for arg in cmdline:
+                        if arg.lower().endswith('.blend'):
+                            # 获取.blend文件所在文件夹
+                            blend_file = arg
+                            project_path = str(Path(arg).parent)
+                            
+                            # 项目信息字典，包含文件夹路径和文件名
+                            project_info = {
+                                'folder': project_path,
+                                'file': str(Path(arg).name),
+                                'full_path': blend_file
+                            }
+                            
+                            # 检查是否已经添加过这个项目
+                            if project_path not in [p['folder'] for p in project_paths]:
+                                project_paths.append(project_info)
+    else:
+        error = 1
+        return [], error
+
+    # 调试信息
+    print(f"系统平台: {system}")
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        if 'blender' in proc.info['name'].lower():
+            print(f"找到Blender相关进程: {proc.info['name']} (PID: {proc.info['pid']})")
+            print(f"命令行参数: {proc.info['cmdline']}")
+            
+    return project_paths, error
+
+def open_blender_project(project_path):
+    """打开Blender项目文件夹"""
+    return open_project_folder(project_path)
+
+
+
 
 
 def open_project_folder(path):
