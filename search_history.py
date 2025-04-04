@@ -18,7 +18,7 @@ class SearchHistoryManager:
         # 初始化时加载历史记录
         self.load_history()
         
-    def add_history_item(self, source_image, search_folders, hash_method, results_count):
+    def add_history_item(self, source_image, search_folders, hash_method, results_count, filter_settings=None):
         """添加新的历史记录"""
         if not source_image or not search_folders:
             return
@@ -29,7 +29,8 @@ class SearchHistoryManager:
             'search_folders': search_folders.copy() if isinstance(search_folders, list) else [search_folders],
             'timestamp': time.time(),
             'hash_method': hash_method,
-            'result_count': results_count
+            'result_count': results_count,
+            'filter_settings': filter_settings or {}  # 添加筛选设置
         }
         
         # 检查是否与最近的历史记录相同
@@ -37,6 +38,7 @@ class SearchHistoryManager:
             # 只更新时间戳和结果数量
             self.history_list[0]['timestamp'] = history_item['timestamp']
             self.history_list[0]['result_count'] = history_item['result_count']
+            self.history_list[0]['filter_settings'] = history_item['filter_settings']
         else:
             # 添加新的历史记录
             self.history_list.insert(0, history_item)
@@ -202,6 +204,38 @@ class SearchHistoryManager:
         self.restore_history_state(history, valid_folders)
     
     def restore_history_state(self, history, valid_folders):
-        """必须在主窗口中实现的方法，用于恢复历史记录状态"""
-        # 回调方法，需要在主窗口中实现
-        pass
+        """恢复历史记录状态"""
+        # 设置源图像
+        self.set_source_image(history['source_image'])
+        
+        # 清除并设置搜索文件夹
+        self.search_folders = valid_folders
+        self.folders_list.clear()
+        for folder in valid_folders:
+            self.folders_list.addItem(folder)
+        self.folder_count_label.setText(f"已选择 {len(valid_folders)} 个搜索文件夹")
+        
+        # 设置哈希算法
+        hash_method = history.get('hash_method', 0)
+        self.hash_combo.setCurrentIndex(hash_method)
+        
+        # 恢复筛选设置
+        filter_settings = history.get('filter_settings', {})
+        if filter_settings:
+            self.filter_checkbox.setChecked(filter_settings.get('filter_enabled', False))
+            self.min_similarity.setValue(filter_settings.get('min_similarity', 0.5))
+            self.max_similarity.setValue(filter_settings.get('max_similarity', 1.0))
+        
+        # 更新搜索按钮状态
+        self.update_search_button_state()
+        
+        # 询问是否立即执行搜索
+        reply = QtWidgets.QMessageBox.question(
+            self, '确认操作', 
+            '是否立即执行搜索？',
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes
+        )
+        
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.start_search()

@@ -40,12 +40,10 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 创建菜单栏
         menu_bar = self.menuBar()  # 获取主窗口的菜单栏
 
-        # 创建顶级菜单（如“文件”、“编辑”等）
+        # 创建顶级菜单（如“文件”、“编辑”、“历史记录”等）
         file_menu = menu_bar.addMenu("快速打开项目文件夹")  # 添加“文件”菜单
         edit_menu = menu_bar.addMenu("编辑")  # 添加“编辑”菜单
         help_menu = menu_bar.addMenu("帮助")  # 添加“帮助”菜单
-
-        # 添加历史记录菜单
         self.history_manager.create_history_menu(menu_bar)
 
         # 为“文件”菜单添加子菜单项
@@ -134,7 +132,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         folder_layout.addLayout(folder_header)
         folder_layout.addWidget(self.folders_list)
 
-        # 将修改后的文件夹选择区域添加到主布局
+        # 将文件夹选择区域添加到主布局
         main_layout.addLayout(folder_layout)
         
         # 创建哈希算法选择下拉框
@@ -144,6 +142,29 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.hash_combo.addItems(["pHash (感知哈希)", "aHash (平均哈希)", "dHash (差异哈希)"])
         hash_layout.addWidget(self.hash_combo)
         hash_layout.addStretch(1)
+
+        #创建相似度筛选
+        filter_layout = QtWidgets.QHBoxLayout()
+        filter_layout.addWidget(QtWidgets.QLabel("相似度筛选:"))
+        self.filter_checkbox = QtWidgets.QCheckBox("启用")
+        filter_layout.addWidget(self.filter_checkbox)
+        filter_layout.addWidget(QtWidgets.QLabel("最小值:"))
+        self.min_similarity = QtWidgets.QDoubleSpinBox()
+        self.min_similarity.setRange(0.0, 1.0)
+        self.min_similarity.setSingleStep(0.05)
+        self.min_similarity.setValue(0.5)
+        filter_layout.addWidget(self.min_similarity)
+        filter_layout.addWidget(QtWidgets.QLabel("最大值:"))
+        self.max_similarity = QtWidgets.QDoubleSpinBox()
+        self.max_similarity.setRange(0.0, 1.0)
+        self.max_similarity.setSingleStep(0.05)
+        self.max_similarity.setValue(1.0)
+        filter_layout.addWidget(self.max_similarity)
+        filter_layout.addStretch(1)
+
+        # 哈希算法和相似度筛选添加到主布局
+        main_layout.addLayout(hash_layout)
+        main_layout.addLayout(filter_layout)
         
         # 创建搜索按钮
         self.search_btn = QtWidgets.QPushButton("开始搜索")
@@ -538,6 +559,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         
         if reply == QtWidgets.QMessageBox.Yes:
             self.start_search()
+
+
     def start_search(self):
         if not self.source_image_path or not self.search_folders:
             return
@@ -556,6 +579,11 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         
         # 获取选择的哈希算法
         hash_algorithm = self.get_selected_hash_algorithm()
+        
+        # 获取相似度筛选条件
+        filter_enabled = self.filter_checkbox.isChecked()
+        min_similarity = self.min_similarity.value()
+        max_similarity = self.max_similarity.value()
         
         # 加载源图像
         try:
@@ -576,6 +604,10 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.information(self, "信息", "在选定的文件夹中没有找到图像文件。")
                 progress.close()
                 return
+            
+            # 计算变量用于跟踪筛选结果
+            filtered_count = 0
+            total_processed = 0
             
             # 计算每个图像的相似度
             for i, img_path in enumerate(image_files):
@@ -608,6 +640,13 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                     max_distance = len(source_hash.hash) ** 2
                     similarity = 1 - (hash_distance / max_distance)
                     
+                    total_processed += 1
+                    
+                    # 应用相似度筛选
+                    if filter_enabled and (similarity < min_similarity or similarity > max_similarity):
+                        filtered_count += 1
+                        continue  # 跳过不符合筛选条件的图像
+                    
                     # 存储所有信息
                     image_info = {
                         'path': file_path,
@@ -623,19 +662,28 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                     }
                     
                     self.similarity_results.append(image_info)
-                    if self.similarity_results:
-                        self.history_manager.add_history_item(
-                            self.source_image_path,
-                            self.search_folders,
-                            self.hash_combo.currentIndex(),
-                            len(self.similarity_results))
+                    
                 except Exception as e:
                     print(f"处理图像 {img_path} 时出错: {e}")
-                    print(f"添加历史记录时出错: {e}")
                     traceback.print_exc()
             
+            # 添加到历史记录
+            if self.similarity_results:
+                self.history_manager.add_history_item(
+                    self.source_image_path,
+                    self.search_folders,
+                    self.hash_combo.currentIndex(),
+                    len(self.similarity_results),
+                    {
+                        'filter_enabled': filter_enabled,
+                        'min_similarity': min_similarity,
+                        'max_similarity': max_similarity
+                    }
+                )
+            
             # 更新结果数量标签
-            self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果")
+            filter_message = f"(已筛选掉 {filtered_count} 个)" if filter_enabled else ""
+            self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果 {filter_message}")
             
             # 启用排序功能
             self.sort_combo.setEnabled(True)
@@ -649,8 +697,10 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             self.statusBar.showMessage("搜索完成")
             
             # 显示搜索完成的消息
-            QtWidgets.QMessageBox.information(self, "搜索完成", 
-                                            f"找到 {len(self.similarity_results)} 个结果。")
+            msg = f"找到 {len(self.similarity_results)} 个结果"
+            if filter_enabled:
+                msg += f"\n筛选了 {total_processed} 个文件，其中 {filtered_count} 个不符合相似度条件"
+            QtWidgets.QMessageBox.information(self, "搜索完成", msg)
         
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "错误", f"处理图像时出错: {e}")
