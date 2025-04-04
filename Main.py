@@ -22,7 +22,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         super().__init__()
         self.initUI()
         self.source_image_path = None
-        self.search_folder = None
+        self.search_folders = []  # 修改为列表，存储多个文件夹路径
         self.similarity_results = []
         self.current_sort_mode = 0  # 默认按相似度排序
         
@@ -101,13 +101,32 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         info_layout.addWidget(self.path_label, 4, 0, QtCore.Qt.AlignTop)
         info_layout.addWidget(self.path_value, 4, 1)
         
-        # 创建文件夹选择区域
-        folder_layout = QtWidgets.QHBoxLayout()
-        self.folder_path_label = QtWidgets.QLabel("请选择搜索文件夹")
-        self.select_folder_btn = QtWidgets.QPushButton("选择文件夹")
-        self.select_folder_btn.clicked.connect(self.select_folder)
-        folder_layout.addWidget(self.folder_path_label, 1)
-        folder_layout.addWidget(self.select_folder_btn, 0)
+        # 多选文件夹选择区域
+        folder_layout = QtWidgets.QVBoxLayout()  # 改为垂直布局
+        folder_header = QtWidgets.QHBoxLayout()  # 顶部按钮和标签布局
+
+        self.folder_count_label = QtWidgets.QLabel("已选择 0 个搜索文件夹")
+        self.add_folder_btn = QtWidgets.QPushButton("添加文件夹")
+        self.clear_folders_btn = QtWidgets.QPushButton("清除所有文件夹")
+
+        self.add_folder_btn.clicked.connect(self.add_search_folder)
+        self.clear_folders_btn.clicked.connect(self.clear_search_folders)
+
+        folder_header.addWidget(self.folder_count_label, 1)
+        folder_header.addWidget(self.add_folder_btn, 0)
+        folder_header.addWidget(self.clear_folders_btn, 0)
+
+        # 创建文件夹列表
+        self.folders_list = QtWidgets.QListWidget()
+        self.folders_list.setMaximumHeight(100)  # 限制高度
+        self.folders_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.folders_list.customContextMenuRequested.connect(self.show_folder_context_menu)
+
+        folder_layout.addLayout(folder_header)
+        folder_layout.addWidget(self.folders_list)
+
+        # 将修改后的文件夹选择区域添加到主布局
+        main_layout.addLayout(folder_layout)
         
         # 创建哈希算法选择下拉框
         hash_layout = QtWidgets.QHBoxLayout()
@@ -217,7 +236,43 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         #self.open_unity_action.triggered.connect(self.handle_open_unity)
         #self.file_menu.addAction(self.open_unity_action)
     
+    def add_search_folder(self):
+        """添加搜索文件夹"""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选择搜索文件夹")
+        if folder:
+            # 检查是否已经添加过这个文件夹
+            if folder in self.search_folders:
+                QtWidgets.QMessageBox.information(self, "提示", "此文件夹已添加")
+                return
+                
+            # 添加到列表和UI
+            self.search_folders.append(folder)
+            self.folders_list.addItem(folder)
+            self.folder_count_label.setText(f"已选择 {len(self.search_folders)} 个搜索文件夹")
+            self.update_search_button_state()
 
+    def clear_search_folders(self):
+        """清除所有搜索文件夹"""
+        self.search_folders.clear()
+        self.folders_list.clear()
+        self.folder_count_label.setText("已选择 0 个搜索文件夹")
+        self.update_search_button_state()
+
+    def show_folder_context_menu(self, position):
+        """显示文件夹列表的右键菜单"""
+        menu = QtWidgets.QMenu()
+        current_row = self.folders_list.currentRow()
+        
+        if current_row >= 0:
+            remove_action = menu.addAction("删除此文件夹")
+            action = menu.exec_(self.folders_list.mapToGlobal(position))
+            
+            if action == remove_action:
+                # 从数据和UI中移除
+                self.search_folders.pop(current_row)
+                self.folders_list.takeItem(current_row)
+                self.folder_count_label.setText(f"已选择 {len(self.search_folders)} 个搜索文件夹")
+                self.update_search_button_state()
     def handle_open_unity(self):
         # 调用独立模块的检测函数
         project_paths, error = DCCdetect.get_unity_project_paths()  # 使用新函数名
@@ -361,7 +416,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
     
     def update_search_button_state(self):
         self.search_btn.setEnabled(self.source_image_path is not None and 
-                                   self.search_folder is not None)
+                                len(self.search_folders) > 0)
     
     def get_selected_hash_algorithm(self):
         selected_index = self.hash_combo.currentIndex()
@@ -373,7 +428,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             return imagehash.phash
             
     def start_search(self):
-        if not self.source_image_path or not self.search_folder:
+        if not self.source_image_path or not self.search_folders:
             return
         
         # 清空之前的结果
@@ -395,13 +450,15 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         try:
             source_hash = self.compute_image_hash(self.source_image_path, hash_algorithm)
             
-            # 获取文件夹中的所有图片
+            # 获取所有文件夹中的图片
             image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']
             image_files = []
             
-            for ext in image_extensions:
-                image_files.extend(list(Path(self.search_folder).glob(f'*{ext}')))
-                image_files.extend(list(Path(self.search_folder).glob(f'*{ext.upper()}')))
+            # 遍历每个选择的文件夹
+            for folder in self.search_folders:
+                for ext in image_extensions:
+                    image_files.extend(list(Path(folder).glob(f'*{ext}')))
+                    image_files.extend(list(Path(folder).glob(f'*{ext.upper()}')))
             
             total_files = len(image_files)
             if total_files == 0:
