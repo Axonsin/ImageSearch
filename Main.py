@@ -49,14 +49,12 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.history_manager.create_history_menu(menu_bar)
 
         # 为“文件”菜单添加子菜单项
-        save_action = QtGui.QAction("保存", self)
         exit_action = QtGui.QAction("退出", self)
         open_unity_action = QtGui.QAction("打开当前Unity项目路径", self)
         open_blender_action = QtGui.QAction("打开当前Blender项目路径", self)
 
          # 将子菜单项添加到“文件”菜单中
         file_menu.addAction(open_blender_action)
-        file_menu.addAction(save_action)
         file_menu.addAction(exit_action)
         file_menu.addAction(open_unity_action)
 

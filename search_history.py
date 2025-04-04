@@ -203,5 +203,5 @@ class SearchHistoryManager:
     
     def restore_history_state(self, history, valid_folders):
         """必须在主窗口中实现的方法，用于恢复历史记录状态"""
-        # 这是一个回调方法，需要在主窗口中实现
+        # 回调方法，需要在主窗口中实现
         pass
