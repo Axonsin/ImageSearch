@@ -18,7 +18,7 @@ class SearchHistoryManager:
         # 初始化时加载历史记录
         self.load_history()
         
-    def add_history_item(self, source_image, search_folders, hash_method, results_count, filter_settings=None):
+    def add_history_item(self, source_image, search_folders, hash_method, results_count, algorithm_info=None):
         """添加新的历史记录"""
         if not source_image or not search_folders:
             return
@@ -30,7 +30,7 @@ class SearchHistoryManager:
             'timestamp': time.time(),
             'hash_method': hash_method,
             'result_count': results_count,
-            'filter_settings': filter_settings or {}  # 添加筛选设置
+            'algorithm_info': algorithm_info
         }
         
         # 检查是否与最近的历史记录相同
@@ -38,7 +38,7 @@ class SearchHistoryManager:
             # 只更新时间戳和结果数量
             self.history_list[0]['timestamp'] = history_item['timestamp']
             self.history_list[0]['result_count'] = history_item['result_count']
-            self.history_list[0]['filter_settings'] = history_item['filter_settings']
+            self.history_list[0]['algorithm_info'] = algorithm_info
         else:
             # 添加新的历史记录
             self.history_list.insert(0, history_item)
@@ -215,12 +215,17 @@ class SearchHistoryManager:
             self.folders_list.addItem(folder)
         self.folder_count_label.setText(f"已选择 {len(valid_folders)} 个搜索文件夹")
         
-        # 设置哈希算法
-        hash_method = history.get('hash_method', 0)
-        self.hash_combo.setCurrentIndex(hash_method)
+        # 恢复算法选择
+        algorithm_info = history.get('algorithm_info', {})
+        if algorithm_info.get('algorithm') == 'ssim':
+            self.ssim_radio.setChecked(True)
+        else:
+            self.hash_radio.setChecked(True)
+            hash_type = algorithm_info.get('hash_type', 0)
+            self.hash_combo.setCurrentIndex(hash_type)
         
         # 恢复筛选设置
-        filter_settings = history.get('filter_settings', {})
+        filter_settings = algorithm_info
         if filter_settings:
             self.filter_checkbox.setChecked(filter_settings.get('filter_enabled', False))
             self.min_similarity.setValue(filter_settings.get('min_similarity', 0.5))

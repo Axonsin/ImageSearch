@@ -12,7 +12,7 @@ from search_history import SearchHistoryManager
 import traceback
 import multiprocessing
 from functools import partial
-from image_processor import process_image, compute_image_hash  # 导入新模块中的函数
+from image_processor import process_image, compute_image_hash 
 
 # 尝试导入Qt Material
 try:
@@ -138,13 +138,29 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         # 将文件夹选择区域添加到主布局
         main_layout.addLayout(folder_layout)
         
-        # 创建哈希算法选择下拉框
-        hash_layout = QtWidgets.QHBoxLayout()
-        hash_layout.addWidget(QtWidgets.QLabel("哈希算法:"))
+        # 算法组选择
+        algorithm_layout = QtWidgets.QHBoxLayout()
+        algorithm_layout.addWidget(QtWidgets.QLabel("相似度算法:"))
+        self.algorithm_group = QtWidgets.QButtonGroup(self)
+        self.hash_radio = QtWidgets.QRadioButton("图像哈希")
+        self.ssim_radio = QtWidgets.QRadioButton("SSIM(高精度)")
+        self.hash_radio.setChecked(True)  # 默认选择哈希
+        self.algorithm_group.addButton(self.hash_radio)
+        self.algorithm_group.addButton(self.ssim_radio)
+
+        algorithm_layout.addWidget(self.hash_radio)
+        algorithm_layout.addWidget(self.ssim_radio)
+
+        # 哈希类型选择
         self.hash_combo = QtWidgets.QComboBox()
         self.hash_combo.addItems(["pHash (感知哈希)", "aHash (平均哈希)", "dHash (差异哈希)"])
-        hash_layout.addWidget(self.hash_combo)
-        hash_layout.addStretch(1)
+        algorithm_layout.addWidget(self.hash_combo)
+
+        # Radio Button触发事件
+        self.hash_radio.toggled.connect(self.toggle_algorithm_options)
+        self.ssim_radio.toggled.connect(self.toggle_algorithm_options)
+
+        algorithm_layout.addStretch(1)
 
         #创建相似度筛选
         filter_layout = QtWidgets.QHBoxLayout()
@@ -165,8 +181,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         filter_layout.addWidget(self.max_similarity)
         filter_layout.addStretch(1)
 
-        # 哈希算法和相似度筛选添加到主布局
-        main_layout.addLayout(hash_layout)
+        # 算法和相似度筛选添加到主布局
+        main_layout.addLayout(algorithm_layout)
         main_layout.addLayout(filter_layout)
         
         # 创建搜索按钮
@@ -254,7 +270,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         main_layout.addWidget(self.drop_area)
         main_layout.addWidget(self.image_info_frame)
         main_layout.addLayout(folder_layout)
-        main_layout.addLayout(hash_layout)
+        main_layout.addLayout(algorithm_layout)
         main_layout.addWidget(self.search_btn)
         main_layout.addWidget(result_control_panel)
         main_layout.addWidget(self.result_count_label)
@@ -519,8 +535,17 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             self.image_info_frame.setVisible(False)
     
     def update_search_button_state(self):
+
         self.search_btn.setEnabled(self.source_image_path is not None and 
                                 len(self.search_folders) > 0)
+    def toggle_algorithm_options(self, checked):
+        """根据所选算法切换相关选项的可见性"""
+        if self.hash_radio.isChecked():
+            self.hash_combo.setEnabled(True)
+            # 可以添加其他与哈希算法相关的UI元素状态更改
+        else:
+            self.hash_combo.setEnabled(False)
+            # 可以添加其他与SSIM算法相关的UI元素状态更改
     
     def get_selected_hash_algorithm(self):
         selected_index = self.hash_combo.currentIndex()
@@ -563,7 +588,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         if reply == QtWidgets.QMessageBox.Yes:
             self.start_search()
 
-    def _update_search_results(self, filtered_count, filter_enabled, min_similarity, max_similarity):
+    def _update_search_results(self, filtered_count, filter_enabled, algorithm_info):
         """更新搜索结果UI和添加历史记录"""
         # 添加到历史记录
         if self.similarity_results:
@@ -572,12 +597,28 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 self.search_folders,
                 self.hash_combo.currentIndex(),
                 len(self.similarity_results),
-                {
-                    'filter_enabled': filter_enabled,
-                    'min_similarity': min_similarity,
-                    'max_similarity': max_similarity
-                }
+                algorithm_info
             )
+        
+        # 更新结果数量标签
+        filter_message = f"(已筛选掉 {filtered_count} 个)" if filter_enabled else ""
+        self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果 {filter_message}")
+        
+        # 启用排序功能
+        self.sort_combo.setEnabled(True)
+        self.apply_sort_btn.setEnabled(True)
+        
+        # 默认按相似度排序并显示结果
+        self.sort_combo.setCurrentIndex(0)
+        self.apply_sort()
+        
+        # 显示搜索完成的消息
+        msg = f"找到 {len(self.similarity_results)} 个结果"
+        if filter_enabled:
+            msg += f"\n筛选了 {filtered_count + len(self.similarity_results)} 个文件，其中 {filtered_count} 个不符合相似度条件"
+        QtWidgets.QMessageBox.information(self, "搜索完成", msg)
+        
+        self.statusBar.showMessage("搜索完成")
         
         # 更新结果数量标签
         filter_message = f"(已筛选掉 {filtered_count} 个)" if filter_enabled else ""
@@ -615,16 +656,15 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         progress.show()
         QtWidgets.QApplication.processEvents()
         
-        # 获取选择的哈希算法和筛选设置
-        hash_algorithm = self.get_selected_hash_algorithm()
+        # 获取算法选择
+        use_ssim = self.ssim_radio.isChecked()
+        
+        # 获取筛选设置
         filter_enabled = hasattr(self, 'filter_checkbox') and self.filter_checkbox.isChecked()
         min_similarity = getattr(self, 'min_similarity', QtWidgets.QDoubleSpinBox()).value()
         max_similarity = getattr(self, 'max_similarity', QtWidgets.QDoubleSpinBox()).value()
         
         try:
-            # 计算源图像哈希
-            source_hash = compute_image_hash(self.source_image_path, hash_algorithm)
-            
             # 收集所有图像文件路径
             image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']
             image_files = []
@@ -639,22 +679,38 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.information(self, "信息", "在选定的文件夹中没有找到图像文件。")
                 progress.close()
                 return
-                
-            # 批次大小计算 - 根据文件数量调整
+            
+            # 批次大小计算
             batch_size = min(max(total_files // (multiprocessing.cpu_count() * 2), 1), 100)
             
-            # 创建进程池 - 使用可用CPU核心数量
+            # 创建进程池
             cpu_count = multiprocessing.cpu_count()
             
-            # 使用偏函数传入共享参数
-            worker_func = partial(
-                process_image,  # 使用导入的函数
-                source_hash=source_hash,
-                hash_algorithm=hash_algorithm,
-                min_similarity=min_similarity,
-                max_similarity=max_similarity,
-                filter_enabled=filter_enabled
-            )
+            if use_ssim:
+                # SSIM计算
+                from image_processor import process_image_ssim
+                worker_func = partial(
+                    process_image_ssim,
+                    source_image_path=self.source_image_path,
+                    min_similarity=min_similarity,
+                    max_similarity=max_similarity,
+                    filter_enabled=filter_enabled
+                )
+            else:
+                # 哈希计算
+                from image_processor import process_image
+                # 计算源图像哈希
+                hash_algorithm = self.get_selected_hash_algorithm()
+                source_hash = compute_image_hash(self.source_image_path, hash_algorithm)
+                
+                worker_func = partial(
+                    process_image,
+                    source_hash=source_hash,
+                    hash_algorithm=hash_algorithm,
+                    min_similarity=min_similarity,
+                    max_similarity=max_similarity,
+                    filter_enabled=filter_enabled
+                )
             
             # 使用进程池处理图像
             with multiprocessing.Pool(processes=cpu_count) as pool:
@@ -686,8 +742,17 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                     # 计算筛选统计
                     filtered_count = all_results.count(None)
                     
-                    # 更新UI和历史记录
-                    self._update_search_results(filtered_count, filter_enabled, min_similarity, max_similarity)
+                    # 更新历史记录中添加算法类型
+                    algorithm_info = {
+                        'algorithm': 'ssim' if use_ssim else 'hash',
+                        'hash_type': self.hash_combo.currentIndex() if not use_ssim else None,
+                        'filter_enabled': filter_enabled,
+                        'min_similarity': min_similarity,
+                        'max_similarity': max_similarity
+                    }
+                    
+                    # 更新UI和添加历史记录
+                    self._update_search_results(filtered_count, filter_enabled, algorithm_info)
                 else:
                     self.statusBar.showMessage("搜索已取消")
         
@@ -800,9 +865,6 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             # 设置行高以适应缩略图
             self.result_table.setRowHeight(row, 85)
     
-    def compute_image_hash(self, image_path, hash_algorithm):
-        """使用image_processor模块中的函数计算图像哈希"""
-        return compute_image_hash(image_path, hash_algorithm)
     
     def open_image_from_table(self, row, column):
         """从表格中打开图像"""
