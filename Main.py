@@ -74,6 +74,17 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         
         # 创建布局
         main_layout = QtWidgets.QVBoxLayout(central_widget)
+        # central_widget.setStyleSheet("""
+        # QWidget {
+        #     background-image: url(backgrounds/ttjy.jpg);
+        #     background-position: center;
+        #     background-repeat: no-repeat;
+        #     background-attachment: fixed;
+        #     background-origin: content;
+        #     background-clip: content;
+        # }
+        # """)
+        #我的背景图像啊啊啊啊啊啊啊啊啊啊啊
         
         # 创建拖放区域
         self.drop_area = DropArea(self)
