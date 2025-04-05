@@ -38,7 +38,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             
     def initUI(self):
         self.setWindowTitle('图像相似度搜索')
-        self.setGeometry(100, 100, 1000, 700)
+        self.setGeometry(200, 200, 750, 1200)
         
         # 创建菜单栏
         menu_bar = self.menuBar()  # 获取主窗口的菜单栏
@@ -1134,9 +1134,10 @@ class DropArea(QtWidgets.QLabel):
             QLabel {
                 border: 2px dashed #aaa;
                 border-radius: 5px;
-                background-color: #f8f8f8;
+               
             }
         """)
+         #为了适配主题取消掉了QLabal部分的background-color: #f8f8f8;
         self.setAcceptDrops(True)
     
     def dragEnterEvent(self, event):
