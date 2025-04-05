@@ -39,6 +39,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
     def initUI(self):
         self.setWindowTitle('图像相似度搜索')
         self.setGeometry(200, 200, 750, 1200)
+        app_icon = QtGui.QIcon("icons/search_window_icon.jpg")  # 将路径替换为您的图标位置
+        self.setWindowIcon(app_icon)
         
         # 创建菜单栏
         menu_bar = self.menuBar()  # 获取主窗口的菜单栏
@@ -1129,7 +1131,7 @@ class DropArea(QtWidgets.QLabel):
         super().__init__(parent)
         self.parent = parent
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setText("拖放图像到这里")
+        self.setText("请拖放图像到这里喵<br>Drag and drop image here")
         self.setStyleSheet("""
             QLabel {
                 border: 2px dashed #aaa;

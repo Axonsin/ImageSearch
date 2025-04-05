@@ -22,16 +22,6 @@ def get_unity_project_paths():
                             project_path = cmdline[i + 1]
                             if project_path not in project_paths:  
                                 project_paths.append(project_path)
-    elif system == "darwin":
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            if proc.info['name'] == 'Unity':
-                cmdline = proc.info['cmdline']
-                if cmdline:
-                    for i, arg in enumerate(cmdline):
-                        if arg.lower() == '-projectpath' and i + 1 < len(cmdline):
-                            project_path = cmdline[i + 1]
-                            if project_path not in project_paths:  
-                                project_paths.append(project_path)
     else:
         error = 1
         return [], error
