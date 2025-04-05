@@ -45,8 +45,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
 
         # 创建顶级菜单（如“文件”、“编辑”、“历史记录”等）
         file_menu = menu_bar.addMenu("快速打开项目文件夹")  # 添加“文件”菜单
-        edit_menu = menu_bar.addMenu("编辑")  # 添加“编辑”菜单
-        help_menu = menu_bar.addMenu("帮助")  # 添加“帮助”菜单
+        #edit_menu = menu_bar.addMenu("编辑")  # 添加“编辑”菜单
+        #help_menu = menu_bar.addMenu("帮助")  # 添加“帮助”菜单
         self.history_manager.create_history_menu(menu_bar)
 
         # 为“文件”菜单添加子菜单项
@@ -56,8 +56,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
 
          # 将子菜单项添加到“文件”菜单中
         file_menu.addAction(open_blender_action)
-        file_menu.addAction(exit_action)
         file_menu.addAction(open_unity_action)
+        file_menu.addAction(exit_action)
 
         # 连接信号与槽（与PyQt5一致）
         exit_action.triggered.connect(self.close)  # 点击“退出”关闭窗口
@@ -672,7 +672,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             for folder in self.search_folders:
                 for ext in image_extensions:
                     image_files.extend(list(Path(folder).glob(f'*{ext}')))
-                    image_files.extend(list(Path(folder).glob(f'*{ext.upper()}')))
+                    #image_files.extend(list(Path(folder).glob(f'*{ext.upper()}')))
             
             total_files = len(image_files)
             if total_files == 0:
