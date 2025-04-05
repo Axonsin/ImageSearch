@@ -10,6 +10,9 @@ from qtpy import QtWidgets, QtCore, QtGui
 import DCCdetect
 from search_history import SearchHistoryManager
 import traceback
+import multiprocessing
+from functools import partial
+from image_processor import process_image, compute_image_hash  # 导入新模块中的函数
 
 # 尝试导入Qt Material
 try:
@@ -560,6 +563,41 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         if reply == QtWidgets.QMessageBox.Yes:
             self.start_search()
 
+    def _update_search_results(self, filtered_count, filter_enabled, min_similarity, max_similarity):
+        """更新搜索结果UI和添加历史记录"""
+        # 添加到历史记录
+        if self.similarity_results:
+            self.history_manager.add_history_item(
+                self.source_image_path,
+                self.search_folders,
+                self.hash_combo.currentIndex(),
+                len(self.similarity_results),
+                {
+                    'filter_enabled': filter_enabled,
+                    'min_similarity': min_similarity,
+                    'max_similarity': max_similarity
+                }
+            )
+        
+        # 更新结果数量标签
+        filter_message = f"(已筛选掉 {filtered_count} 个)" if filter_enabled else ""
+        self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果 {filter_message}")
+        
+        # 启用排序功能
+        self.sort_combo.setEnabled(True)
+        self.apply_sort_btn.setEnabled(True)
+        
+        # 默认按相似度排序并显示结果
+        self.sort_combo.setCurrentIndex(0)
+        self.apply_sort()
+        
+        # 显示搜索完成的消息
+        msg = f"找到 {len(self.similarity_results)} 个结果"
+        if filter_enabled:
+            msg += f"\n筛选了 {filtered_count + len(self.similarity_results)} 个文件，其中 {filtered_count} 个不符合相似度条件"
+        QtWidgets.QMessageBox.information(self, "搜索完成", msg)
+        
+        self.statusBar.showMessage("搜索完成")
 
     def start_search(self):
         if not self.source_image_path or not self.search_folders:
@@ -577,23 +615,20 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         progress.show()
         QtWidgets.QApplication.processEvents()
         
-        # 获取选择的哈希算法
+        # 获取选择的哈希算法和筛选设置
         hash_algorithm = self.get_selected_hash_algorithm()
+        filter_enabled = hasattr(self, 'filter_checkbox') and self.filter_checkbox.isChecked()
+        min_similarity = getattr(self, 'min_similarity', QtWidgets.QDoubleSpinBox()).value()
+        max_similarity = getattr(self, 'max_similarity', QtWidgets.QDoubleSpinBox()).value()
         
-        # 获取相似度筛选条件
-        filter_enabled = self.filter_checkbox.isChecked()
-        min_similarity = self.min_similarity.value()
-        max_similarity = self.max_similarity.value()
-        
-        # 加载源图像
         try:
-            source_hash = self.compute_image_hash(self.source_image_path, hash_algorithm)
+            # 计算源图像哈希
+            source_hash = compute_image_hash(self.source_image_path, hash_algorithm)
             
-            # 获取所有文件夹中的图片
+            # 收集所有图像文件路径
             image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']
             image_files = []
             
-            # 遍历每个选择的文件夹
             for folder in self.search_folders:
                 for ext in image_extensions:
                     image_files.extend(list(Path(folder).glob(f'*{ext}')))
@@ -604,108 +639,64 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.information(self, "信息", "在选定的文件夹中没有找到图像文件。")
                 progress.close()
                 return
-            
-            # 计算变量用于跟踪筛选结果
-            filtered_count = 0
-            total_processed = 0
-            
-            # 计算每个图像的相似度
-            for i, img_path in enumerate(image_files):
-                if progress.wasCanceled():
-                    break
                 
-                progress.setValue(int((i / total_files) * 100))
-                QtWidgets.QApplication.processEvents()
+            # 批次大小计算 - 根据文件数量调整
+            batch_size = min(max(total_files // (multiprocessing.cpu_count() * 2), 1), 100)
+            
+            # 创建进程池 - 使用可用CPU核心数量
+            cpu_count = multiprocessing.cpu_count()
+            
+            # 使用偏函数传入共享参数
+            worker_func = partial(
+                process_image,  # 使用导入的函数
+                source_hash=source_hash,
+                hash_algorithm=hash_algorithm,
+                min_similarity=min_similarity,
+                max_similarity=max_similarity,
+                filter_enabled=filter_enabled
+            )
+            
+            # 使用进程池处理图像
+            with multiprocessing.Pool(processes=cpu_count) as pool:
+                # 使用map_async批量处理
+                result_async = pool.map_async(worker_func, image_files, chunksize=batch_size)
                 
-                try:
-                    # 获取文件信息
-                    file_path = str(img_path)
-                    file_name = os.path.basename(file_path)
-                    file_ext = os.path.splitext(file_path)[1].lower()
-                    file_type = file_ext[1:].upper()
+                # 等待结果并更新进度
+                while not result_async.ready():
+                    # 使用估计进度
+                    estimated_progress = min(result_async._number_left * 100 / (total_files / batch_size), 100)
+                    progress.setValue(100 - int(estimated_progress))
                     
-                    # 获取文件修改日期
-                    file_mtime = os.path.getmtime(file_path)
-                    file_date = datetime.fromtimestamp(file_mtime)
+                    # 检查是否取消
+                    if progress.wasCanceled():
+                        pool.terminate()
+                        break
                     
-                    # 获取图像分辨率
-                    with Image.open(file_path) as img:
-                        width, height = img.size
-                        resolution = width * height  # 总像素数
-                        resolution_str = f"{width} × {height}"
+                    # 更新UI
+                    QtWidgets.QApplication.processEvents()
+                    time.sleep(0.1)
+                
+                # 获取所有结果
+                if not progress.wasCanceled():
+                    all_results = result_async.get()
                     
-                    # 计算相似度
-                    img_hash = self.compute_image_hash(file_path, hash_algorithm)
-                    hash_distance = source_hash - img_hash
-                    max_distance = len(source_hash.hash) ** 2
-                    similarity = 1 - (hash_distance / max_distance)
+                    # 过滤掉None结果
+                    self.similarity_results = [r for r in all_results if r is not None]
                     
-                    total_processed += 1
+                    # 计算筛选统计
+                    filtered_count = all_results.count(None)
                     
-                    # 应用相似度筛选
-                    if filter_enabled and (similarity < min_similarity or similarity > max_similarity):
-                        filtered_count += 1
-                        continue  # 跳过不符合筛选条件的图像
-                    
-                    # 存储所有信息
-                    image_info = {
-                        'path': file_path,
-                        'name': file_name,
-                        'type': file_type,
-                        'date': file_date,
-                        'mtime': file_mtime,
-                        'resolution': resolution,
-                        'resolution_str': resolution_str,
-                        'width': width,
-                        'height': height,
-                        'similarity': similarity
-                    }
-                    
-                    self.similarity_results.append(image_info)
-                    
-                except Exception as e:
-                    print(f"处理图像 {img_path} 时出错: {e}")
-                    traceback.print_exc()
-            
-            # 添加到历史记录
-            if self.similarity_results:
-                self.history_manager.add_history_item(
-                    self.source_image_path,
-                    self.search_folders,
-                    self.hash_combo.currentIndex(),
-                    len(self.similarity_results),
-                    {
-                        'filter_enabled': filter_enabled,
-                        'min_similarity': min_similarity,
-                        'max_similarity': max_similarity
-                    }
-                )
-            
-            # 更新结果数量标签
-            filter_message = f"(已筛选掉 {filtered_count} 个)" if filter_enabled else ""
-            self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果 {filter_message}")
-            
-            # 启用排序功能
-            self.sort_combo.setEnabled(True)
-            self.apply_sort_btn.setEnabled(True)
-            
-            # 默认按相似度排序并显示结果
-            self.sort_combo.setCurrentIndex(0)
-            self.apply_sort()
-            
-            progress.setValue(100)
-            self.statusBar.showMessage("搜索完成")
-            
-            # 显示搜索完成的消息
-            msg = f"找到 {len(self.similarity_results)} 个结果"
-            if filter_enabled:
-                msg += f"\n筛选了 {total_processed} 个文件，其中 {filtered_count} 个不符合相似度条件"
-            QtWidgets.QMessageBox.information(self, "搜索完成", msg)
+                    # 更新UI和历史记录
+                    self._update_search_results(filtered_count, filter_enabled, min_similarity, max_similarity)
+                else:
+                    self.statusBar.showMessage("搜索已取消")
         
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "错误", f"处理图像时出错: {e}")
             self.statusBar.showMessage("搜索出错")
+            traceback.print_exc()
         finally:
+            progress.setValue(100)
             progress.close()
     
     def apply_sort(self):
@@ -810,12 +801,8 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
             self.result_table.setRowHeight(row, 85)
     
     def compute_image_hash(self, image_path, hash_algorithm):
-        # 计算图像哈希
-        img = Image.open(image_path)
-        # 转换为RGB模式（处理RGBA或其他模式）
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
-        return hash_algorithm(img)
+        """使用image_processor模块中的函数计算图像哈希"""
+        return compute_image_hash(image_path, hash_algorithm)
     
     def open_image_from_table(self, row, column):
         """从表格中打开图像"""
