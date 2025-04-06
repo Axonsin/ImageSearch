@@ -104,7 +104,7 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         self.type_label = QtWidgets.QLabel("类型:")
         self.depth_label = QtWidgets.QLabel("位元深度:")
         self.resolution_label = QtWidgets.QLabel("分辨率:")
-        self.path_label = QtWidgets.QLabel("路径:")
+        self.path_label = QtWidgets.QLabel("路径/全名:")
         
         self.format_value = QtWidgets.QLabel()
         self.type_value = QtWidgets.QLabel()
