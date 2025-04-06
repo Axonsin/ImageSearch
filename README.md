@@ -8,6 +8,7 @@ img{
 
 本项目是一个基于 Python 的图片相似度搜索工具，它支持通过多种图像哈希和 SSIM 算法对大量图像进行相似度判断，并通过直观的图形界面展示搜索结果。同时，项目结合了多进程处理、DCC 软件（如 Unity 和 Blender）检测，快速选择项目文件夹，以及搜索历史管理。为寻找相似图像提供高效、便捷的图像搜索体验。
 **安装前置条件**
+`pip install Pillow imagehash numpy psutil qtpy PyQt5`
   
 
 ---
