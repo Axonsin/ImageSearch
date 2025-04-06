@@ -633,26 +633,6 @@ class ImageSimilarityApp(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.information(self, "搜索完成", msg)
         
         self.statusBar.showMessage("搜索完成")
-        
-        # 更新结果数量标签
-        filter_message = f"(已筛选掉 {filtered_count} 个)" if filter_enabled else ""
-        self.result_count_label.setText(f"找到 {len(self.similarity_results)} 个结果 {filter_message}")
-        
-        # 启用排序功能
-        self.sort_combo.setEnabled(True)
-        self.apply_sort_btn.setEnabled(True)
-        
-        # 默认按相似度排序并显示结果
-        self.sort_combo.setCurrentIndex(0)
-        self.apply_sort()
-        
-        # 显示搜索完成的消息
-        msg = f"找到 {len(self.similarity_results)} 个结果"
-        if filter_enabled:
-            msg += f"\n筛选了 {filtered_count + len(self.similarity_results)} 个文件，其中 {filtered_count} 个不符合相似度条件"
-        QtWidgets.QMessageBox.information(self, "搜索完成", msg)
-        
-        self.statusBar.showMessage("搜索完成")
 
     def start_search(self):
         if not self.source_image_path or not self.search_folders:
