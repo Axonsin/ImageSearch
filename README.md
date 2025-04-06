@@ -93,15 +93,17 @@ img{
 ### 对于多噪声扰乱和高度结构相似图像(BaseMap,NormalMap,HeightMap之间的相似度)的更高级SSIM处理
 
 #### **SSIM的完整公式**：
-$
+
+$$
 \text{SSIM}(x, y) = \frac{(2\mu_x \mu_y + C_1)(2\sigma_{xy} + C_2)}{(\mu_x^2 + \mu_y^2 + C_1)(\sigma_x^2 + \sigma_y^2 + C_2)}
-$
+$$
+
 
 #### **简化版公式（本项目使用优化版的）**：
 通常将 \(C_1\) 和 \(C_2\) 合并为两个常数项，简化为：
-$
+$$
 \text{SSIM}(x, y) = \frac{(2\mu_x \mu_y + C_1)(2\sigma_{xy} + C_2)}{(\mu_x^2 + \mu_y^2 + C_1)(\sigma_x^2 + \sigma_y^2 + C_2)}
-$
+$$
 
 - 对于多噪声生成的图像，SSIM可以从亮度、对比度、结构信息有效评判相似度，这是传统哈希难以实现的。对于BaseMap、NormalMap和HeightMap之间的相似度，我希望能**提高结构信息的权重对比度，先用Sobel算子进行图像的边缘提取（或者使用Controlnet中的Canny边缘检测），目的是对图像进行边缘检测或梯度计算，然后使用提高结构信息权重的SSIM算法进行相似度计算**。但是这要求使用完整版的SSIM检测（权重调整可以由C1、C2进行间接控制，也就是说不能简单合并C1和C2）。
 
