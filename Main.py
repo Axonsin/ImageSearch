@@ -1,3 +1,7 @@
+#请注意运行这个项目需要安装的库！！
+#pip install Pillow imagehash numpy psutil qtpy PyQt5
+
+
 import sys
 import os
 import time
